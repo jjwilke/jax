@@ -40,6 +40,7 @@ import operator as op
 import sys
 import threading
 import types
+import traceback
 from typing import (Any, Callable, Dict, List, NamedTuple, Optional, FrozenSet,
                     Sequence, Set, Tuple, Type, Union, Iterable, Mapping, cast,
                     TYPE_CHECKING)
@@ -373,6 +374,8 @@ def spec_to_indices(shape: Tuple[int, ...],
 def identity(x): return x
 
 def _shard_arg(arg, devices, arg_indices, mode):
+  traceback.print_stack()
+  print("_shard_arg ", arg, type(arg))
   """Returns a list of size len(devices) containing per-device buffers.
 
   For the C++ pmap path, we fallback to Python (this function) to shard
@@ -385,16 +388,19 @@ def _shard_arg(arg, devices, arg_indices, mode):
     mode: An enum telling whether shard_arg is executed via pmap or pjit/xmap.
   """
   if isinstance(arg, ShardedDeviceArray) and arg_indices == arg.indices:
+    print("ShardedDeviceArray shard with matching indices")
     # The shard_arg_handlers allow an extensible set of types to be sharded, but
     # inline handling for ShardedDeviceArray as a special case for performance
     # NOTE: we compare indices instead of sharding_spec because
     # pmap_benchmark.pmap_shard_args_benchmark indicates this is faster.
+    print("device buffers have type", type(arg.device_buffers[0]))
     return [
         buf if buf.device() == d else buf.copy_to_device(d)
         for d, buf in zip(devices, arg.device_buffers)
     ]
   else:
     arg = xla.canonicalize_dtype(arg)
+    print("canonicalized arg to", arg)
     return shard_arg_handlers[type(arg)](arg, devices, arg_indices, mode)
 
 
@@ -1189,6 +1195,9 @@ def parallel_callable(fun: lu.WrappedFun,
                       donated_invars: Sequence[bool],
                       global_arg_shapes: Sequence[Optional[Tuple[int, ...]]],
                       *avals):
+  print("parallel_callable")
+  import traceback
+  traceback.print_stack()
   pmap_computation = lower_parallel_callable(
       fun, backend_name, axis_name, axis_size, global_axis_size, devices, name,
       in_axes, out_axes_thunk, donated_invars, global_arg_shapes, avals)
@@ -2034,10 +2043,14 @@ class ExecuteReplicated:
   def __call__(self, *args):
     args = [x for i, x in enumerate(args) if i in self.kept_var_idx]
     input_bufs = self.in_handler(args)
+    print("in_handler(args) = ", input_bufs[0], type(input_bufs[0]))
     if (self.ordered_effects or self.has_unordered_effects or
         self.has_host_callbacks):
+      print("call with tokens")
       out_bufs = self._call_with_tokens(input_bufs)
     else:
+      print("execute_sharded_on_local_devices")
+      print(input_bufs)
       out_bufs = self.xla_executable.execute_sharded_on_local_devices(
           input_bufs)
     if dispatch.needs_check_special():

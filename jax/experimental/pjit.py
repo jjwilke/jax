@@ -382,6 +382,10 @@ def pjit(fun: Callable,
     args_flat, _, params, _, out_tree, _ = infer_params(*args, **kwargs)
     for arg in args_flat:
       _check_arg(arg)
+    for arg in args:
+      print("wrapped arg=", arg, type(arg))
+    for arg in args_flat:
+      print("flat arg=", arg, type(arg))
     out = pjit_p.bind(*args_flat, **params)
     return tree_unflatten(out_tree, out)
 
